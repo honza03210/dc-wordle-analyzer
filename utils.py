@@ -26,12 +26,15 @@ def flood_fill(image: Image.Image, x: int, y: int, expected: int, substitute: in
     image = image.copy()
     q = deque()
 
-    if image.getpixel((x, y)) < expected + tolerance and image.getpixel((x, y)) > expected - tolerance:
-        q.append((x, y))
-        background.append((x, y))
-        image.putpixel((x, y), substitute)
-    else:
-        return None
+    if image.getpixel((x, y)) >= expected + tolerance or image.getpixel((x, y)) <= expected - tolerance:
+        expected = image.getpixel((x, y))
+    
+    if expected <= substitute + tolerance and expected >= substitute - tolerance:
+        return image
+
+    q.append((x, y))
+    background.append((x, y))
+    image.putpixel((x, y), substitute)
     
     while len(q) > 0:
         (curr_x, curr_y) = q.pop()
@@ -108,11 +111,13 @@ def analyze_section_bounding_box(image: Image.Image, x: int, y: int, section_ind
 """
 Explores the whole image, looking for unexplored sections, returns list of bounding boxes
 """
-def bounding_boxes(image: Image.Image, background: int = 255) -> list[tuple[tuple[int, int]]]:
+def bounding_boxes(image: Image.Image, top_left: tuple[int, int] = (0, 0), bottom_right: tuple[int, int] | None = None, background: int = 255) -> list[tuple[tuple[int, int]]]:
+    if not bottom_right:
+        bottom_right = (image.width - 1, image.height - 1)
     image = shift(image, MAX_PLAYERS, False)
     bbs: list[tuple[tuple[int, int]]] = []
-    for y in range(image.height):
-        for x in range(image.width):
+    for y in range(top_left[1], bottom_right[1]):
+        for x in range(top_left[0], bottom_right[0]):
             if (image.getpixel((x, y)) != background and image.getpixel((x, y)) > MAX_PLAYERS):
                 bbs.append(analyze_section_bounding_box(image, x, y, len(bbs)))
                 # will pop if the bb is around a small artifact
@@ -179,11 +184,14 @@ def get_pixel_stats(image: Image.Image, pixels: list[tuple[int, int]]):
     red = 0
     green = 0
     blue = 0
+    im_c = image.convert("L")
+    im: Image.Image = image.convert("RGB")
     for pixel in pixels:
-        r, g, b = image.getpixel(pixel)
+        r, g, b = im.getpixel(pixel)
         red += r
         green += g
         blue += b
+        im_c.putpixel((pixel[0], pixel[1]), 100)
     red /= len(pixels)
     green /= len(pixels)
     blue /= len(pixels)
@@ -193,46 +201,86 @@ def get_pixel_stats(image: Image.Image, pixels: list[tuple[int, int]]):
 
 def get_pfp_pixels(image: Image.Image, bot_right: tuple[int, int], top_left: tuple[int, int]) -> list[tuple[int, int]]:
     image = image.copy()
-    image = flood_fill(image, bot_right[0] - 10, bot_right[1] - 10, 30, 255, 15, [])
+    image = flood_fill(image, bot_right[0] - 20, bot_right[1] - 2, 30, 255, 1, [])
     image = erode(image, 3)
     image = morf_close(image, 5)
     for y in range(image.height):
         for x in range(image.width):
             if image.getpixel((x, y)) != 255:
                 image.putpixel((x, y), 100)
-
-    bbs = bounding_boxes(image)
+    bbs = bounding_boxes(image, top_left, bot_right)
     max_round = (0, bbs[0])
     for bb in bbs:
         r = roundness(image, bb[1], bb[0], 0)
         if r > max_round[0]:
             max_round = (r, bb)
-    
     pfp_pixels = []
-    for y in range(bot_right[1], top_left[1] - 1, -1):
-        for x in range(top_left[0], bot_right[0] + 1):
+    for y in range(max_round[1][0][1], max_round[1][1][1] + 1):
+        for x in range(max_round[1][0][0], max_round[1][1][0] + 1):
             if image.getpixel((x, y)) != 255:
                 pfp_pixels.append((x, y))
+    # for y in range(bot_right[1], top_left[1] - 1, -1):
+    #     for x in range(top_left[0], bot_right[0] + 1):
+    #         if image.getpixel((x, y)) != 255:
+    #             pfp_pixels.append((x, y))
     
     return pfp_pixels
 
 
 def get_players_pixel_stats():
-    
-    for image_name in ["alien.png", "codee.png", "dart.png"]
+    player_pfp_stats: dict[str: tuple[float, float, float]] = {}
+    path = './players/'
+    files = os.listdir(path)
 
+    # Print the files
+    for file in files:
+        # print(f"started {file}")
+        im_orig = Image.open(path + file)
+        im = im_orig.convert("L")
+        im = shift(im)
+        im = flood_fill(im, 0, 0, 20, 255, 1, [])
+        im_copy = im.copy()
+        bbs = bounding_boxes(im_copy)
+        player_pfp_stats[file] = get_pixel_stats(im_orig, get_pfp_pixels(im, bbs[0][1], bbs[0][0]))
+        print(f"'{file}' = {player_pfp_stats[file]}")
+    return player_pfp_stats
+
+def match_similar_pfp(players_pfp_stats: dict[str: tuple[float, float, float]], to_match: tuple[float, float, float]):
+    best_guess = ("Unknown", 999999999)
+    for name, (r, g, b) in players_pfp_stats.items():
+        # print(f"'{name}'= ({r}, {g}, {b})")
+        diff = (to_match[0] - r) ** 2 + (to_match[1] - g) ** 2 + (to_match[2] - b) ** 2
+        if diff < best_guess[1]:
+            best_guess = name, diff
+    return best_guess
 
 
 if __name__ == "__main__":
-    im_orig = Image.open("1false.png")
+    players_pfp_stats = get_players_pixel_stats()
+    # players_pfp_stats = {
+    #     'vojto.png': (147.42698961937717, 161.73033448673587, 145.79630911188005),
+    #     'dart.png': (98.34100539291217, 91.60333204930663, 89.58127889060093),
+    #     'codee.png': (151.6010264721772, 115.60453808752025, 51.14154511075095),
+    #     'alien.png': (37.724701011959525, 24.86522539098436, 15.061177552897885),
+    #     'techno.png': (109.40345853067518, 172.26776076660425, 187.46062341667584),
+    #     'dacia.png': (174.9640559130242, 171.6345684490792, 148.02462835589083),
+    #     'joy.png': (231.93593438262027, 198.06162713367326, 194.85812458434935),
+    #     'honza.png': (25.536231884057973, 7.797101449275362, 18.304347826086957),
+    #     'kalista.png': (68.64444654862228, 59.07006912224221, 59.27421645677493)
+    # }    
+
+    im_orig = Image.open("9players.png")
     im = im_orig.convert("L")
-    background = []
     im = shift(im)
-    im = flood_fill(im, 0, 0, 20, 255, 1, background)
+    im = flood_fill(im, 0, 0, 20, 255, 1, [])
     im = erode(im, 5)
     im_copy = im.copy()
-    bbs = bounding_boxes(im_copy, 255)
+    bbs = bounding_boxes(im_copy)
     for bb in bbs:
-        print(check_section_win(im, bb[1], bb[0]))
-    
-    print(get_pixel_stats(im_orig, get_pfp_pixels(im, bbs[0][1], bbs[0][0])))
+        win = check_section_win(im, bb[1], bb[0])
+        print("######")
+        print("Solved" if win else "Not solved")
+        stats = get_pixel_stats(im_orig, get_pfp_pixels(im, bb[1], bb[0]))
+        print(stats)
+        print(f"probably {match_similar_pfp(players_pfp_stats, stats)}")
+        print("######")
