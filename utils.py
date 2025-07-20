@@ -1,6 +1,7 @@
 from PIL import Image
 from collections import deque
 from math import sqrt
+import os
 
 neighbor4 = [(-1, 0), (1, 0), (0, 1), (0, -1)]
 IMAGE_MAX = 255
@@ -60,6 +61,23 @@ def erode(image: Image.Image, radius: int):
                         image_copy.putpixel((x, y), 255)
     return image_copy
 
+"""
+Close operation with circular convolution kernel of 'radius'
+"""
+def morf_close(image: Image.Image, radius: int):
+    image_copy = image.copy()
+    for y in range(image.height):
+        for x in range(image.width):
+            min_pix_val = 255
+            for iy in range(-radius, radius + 1):
+                for ix in range(-radius, radius + 1):
+                    if sqrt(iy * iy + ix * ix) >= radius:
+                        continue
+                    if (x + ix) >= 0 and (x + ix) < image.width and (y + iy) < image.height and (y + iy) >= 0:
+                        min_pix_val = min(image.getpixel((x + ix, y + iy)), min_pix_val)
+            image_copy.putpixel((x, y), min_pix_val)
+    return image_copy
+
 
 """
 floods a 4-connected section, returns bounding box
@@ -97,6 +115,9 @@ def bounding_boxes(image: Image.Image, background: int = 255) -> list[tuple[tupl
         for x in range(image.width):
             if (image.getpixel((x, y)) != background and image.getpixel((x, y)) > MAX_PLAYERS):
                 bbs.append(analyze_section_bounding_box(image, x, y, len(bbs)))
+                # will pop if the bb is around a small artifact
+                if abs(bbs[-1][0][0] - bbs[-1][1][0]) * abs(bbs[-1][0][1] - bbs[-1][1][1]) < 30:
+                    bbs.pop()
     return bbs
 
 
@@ -119,9 +140,92 @@ def check_section_win(image: Image.Image, bot_right: tuple[int, int], top_left: 
     return False
 
 
+"""
+gets the center of an object
+"""
+def roundness(image: Image.Image, bot_right: tuple[int, int], top_left: tuple[int, int], section_index):
+    sum_x = 0
+    sum_y = 0
+    count = 0
+    edges = []
+    for y in range(bot_right[1], top_left[1] - 1, -1):
+        for x in range(top_left[0], bot_right[0] + 1):
+            if image.getpixel((x, y)) != 255:
+                sum_x += x
+                sum_y += y
+                count += 1
+                edge = False
+                for (ix, iy) in neighbor4:
+                    if x + ix < 0 or x + ix >= image.width or y + iy < 0 or y + iy >= image.height:
+                        continue
+                    if image.getpixel((x + ix, y + iy)) != image.getpixel((x, y)):
+                        edge = True
+                if edge:
+                    edges.append((x, y))
+            
+    center = (sum_x / count, sum_y / count)
+
+    max_dist = 0
+    min_dist = 10000
+    for edge_pixel in edges:
+        dist = (edge_pixel[0] - center[0]) ** 2 + (edge_pixel[1] - center[1]) ** 2
+        max_dist = max(max_dist, dist)
+        min_dist = min(min_dist, dist)
+    
+    return min_dist / max_dist
+
+
+def get_pixel_stats(image: Image.Image, pixels: list[tuple[int, int]]):
+    red = 0
+    green = 0
+    blue = 0
+    for pixel in pixels:
+        r, g, b = image.getpixel(pixel)
+        red += r
+        green += g
+        blue += b
+    red /= len(pixels)
+    green /= len(pixels)
+    blue /= len(pixels)
+
+    return red, green, blue
+
+
+def get_pfp_pixels(image: Image.Image, bot_right: tuple[int, int], top_left: tuple[int, int]) -> list[tuple[int, int]]:
+    image = image.copy()
+    image = flood_fill(image, bot_right[0] - 10, bot_right[1] - 10, 30, 255, 15, [])
+    image = erode(image, 3)
+    image = morf_close(image, 5)
+    for y in range(image.height):
+        for x in range(image.width):
+            if image.getpixel((x, y)) != 255:
+                image.putpixel((x, y), 100)
+
+    bbs = bounding_boxes(image)
+    max_round = (0, bbs[0])
+    for bb in bbs:
+        r = roundness(image, bb[1], bb[0], 0)
+        if r > max_round[0]:
+            max_round = (r, bb)
+    
+    pfp_pixels = []
+    for y in range(bot_right[1], top_left[1] - 1, -1):
+        for x in range(top_left[0], bot_right[0] + 1):
+            if image.getpixel((x, y)) != 255:
+                pfp_pixels.append((x, y))
+    
+    return pfp_pixels
+
+
+def get_players_pixel_stats():
+    
+    for image_name in ["alien.png", "codee.png", "dart.png"]
+
+
+
 if __name__ == "__main__":
-    im = Image.open("1false.png")
-    im = im.convert("L")
+    im_orig = Image.open("1false.png")
+    im = im_orig.convert("L")
     background = []
     im = shift(im)
     im = flood_fill(im, 0, 0, 20, 255, 1, background)
@@ -130,3 +234,5 @@ if __name__ == "__main__":
     bbs = bounding_boxes(im_copy, 255)
     for bb in bbs:
         print(check_section_win(im, bb[1], bb[0]))
+    
+    print(get_pixel_stats(im_orig, get_pfp_pixels(im, bbs[0][1], bbs[0][0])))
