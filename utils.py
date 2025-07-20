@@ -6,6 +6,9 @@ neighbor4 = [(-1, 0), (1, 0), (0, 1), (0, -1)]
 IMAGE_MAX = 255
 MAX_PLAYERS = 15
 
+"""
+Shifts all pixels in the image by offset (new = old + offset)
+"""
 def shift(image: Image.Image, offset: int = -1, cut_max = True):
     image = image.copy()
     for y in range(image.height):
@@ -15,6 +18,9 @@ def shift(image: Image.Image, offset: int = -1, cut_max = True):
     return image
     
 
+"""
+Fills all the pixels of color 'expected' (with a +- 'tolerance') with 'substitute' color, adds all filled pixels into 'background' list
+"""
 def flood_fill(image: Image.Image, x: int, y: int, expected: int, substitute: int, tolerance: int, background: list[tuple[int, int]]) -> Image.Image | None:
     image = image.copy()
     q = deque()
@@ -37,6 +43,10 @@ def flood_fill(image: Image.Image, x: int, y: int, expected: int, substitute: in
                 image.putpixel((curr_x + ix, curr_y + iy), substitute)
     return image
 
+
+"""
+Erosion operation with circular convolution kernel of 'radius'
+"""
 def erode(image: Image.Image, radius: int):
     image_copy = image.copy()
     for y in range(image.height):
@@ -50,6 +60,10 @@ def erode(image: Image.Image, radius: int):
                         image_copy.putpixel((x, y), 255)
     return image_copy
 
+
+"""
+floods a 4-connected section, returns bounding box
+"""
 def analyze_section_bounding_box(image: Image.Image, x: int, y: int, section_index: int) -> tuple[tuple[int, int]]:
     max_x = x
     min_x = x
@@ -58,8 +72,6 @@ def analyze_section_bounding_box(image: Image.Image, x: int, y: int, section_ind
     q = deque()
     q.append((x, y))
     image.putpixel((x, y), section_index)
-
-
     while len(q) > 0:
         (curr_x, curr_y) = q.pop()
         for (ix, iy) in neighbor4:
@@ -74,15 +86,23 @@ def analyze_section_bounding_box(image: Image.Image, x: int, y: int, section_ind
                 image.putpixel((curr_x + ix, curr_y + iy), section_index)
     return ((min_x, min_y), (max_x, max_y))
 
+
+"""
+Explores the whole image, looking for unexplored sections, returns list of bounding boxes
+"""
 def bounding_boxes(image: Image.Image, background: int = 255) -> list[tuple[tuple[int, int]]]:
     image = shift(image, MAX_PLAYERS, False)
     bbs: list[tuple[tuple[int, int]]] = []
     for y in range(image.height):
         for x in range(image.width):
-            if (image.getpixel((x, y)) != 255 and image.getpixel((x, y)) > MAX_PLAYERS):
+            if (image.getpixel((x, y)) != background and image.getpixel((x, y)) > MAX_PLAYERS):
                 bbs.append(analyze_section_bounding_box(image, x, y, len(bbs)))
     return bbs
 
+
+"""
+Checks whether there is a winning configuration (5 green squares) in a section
+"""
 def check_section_win(image: Image.Image, bot_right: tuple[int, int], top_left: tuple[int, int], green_to_grey: int = 115):
     for y in range(bot_right[1], top_left[1] - 1, -1):
         green_chunks = 0
