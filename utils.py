@@ -242,7 +242,7 @@ def get_players_pixel_stats():
         im_copy = im.copy()
         bbs = bounding_boxes(im_copy)
         player_pfp_stats[file] = get_pixel_stats(im_orig, get_pfp_pixels(im, bbs[0][1], bbs[0][0]))
-        print(f"'{file}' = {player_pfp_stats[file]}")
+        print(f"'{file}': {player_pfp_stats[file]},")
     return player_pfp_stats
 
 def match_similar_pfp(players_pfp_stats: dict[str: tuple[float, float, float]], to_match: tuple[float, float, float]):
@@ -256,31 +256,29 @@ def match_similar_pfp(players_pfp_stats: dict[str: tuple[float, float, float]], 
 
 
 if __name__ == "__main__":
-    players_pfp_stats = get_players_pixel_stats()
-    # players_pfp_stats = {
-    #     'vojto.png': (147.42698961937717, 161.73033448673587, 145.79630911188005),
-    #     'dart.png': (98.34100539291217, 91.60333204930663, 89.58127889060093),
-    #     'codee.png': (151.6010264721772, 115.60453808752025, 51.14154511075095),
-    #     'alien.png': (37.724701011959525, 24.86522539098436, 15.061177552897885),
-    #     'techno.png': (109.40345853067518, 172.26776076660425, 187.46062341667584),
-    #     'dacia.png': (174.9640559130242, 171.6345684490792, 148.02462835589083),
-    #     'joy.png': (231.93593438262027, 198.06162713367326, 194.85812458434935),
-    #     'honza.png': (25.536231884057973, 7.797101449275362, 18.304347826086957),
-    #     'kalista.png': (68.64444654862228, 59.07006912224221, 59.27421645677493)
-    # }    
+    # computes the color characteristics of pfps in players dir
+    # players_pfp_stats = get_players_pixel_stats()
+
+    players_pfp_stats = {
+        'vojto.png': (133.94788506157417, 147.28466892736034, 132.4917008745315),
+        'dart.png': (90.25311475409836, 85.65803278688524, 84.5583606557377),
+        'kalista.png': (68.59580224645404, 60.30564893006477, 60.482413708288924),
+        'codee.png': (128.39014813492773, 100.0146350169552, 47.477244333392825),
+        'honza.png': (6.854538956397427, 4.610257326661902, 23.32880629020729),
+        'dacia.png': (162.96234160271283, 161.2764590398001, 138.93842584329823),
+        'alien.png': (37.858724772280766, 26.381496695838543, 17.59385604572245),
+        'techno.png': (127.09064830751578, 174.90549954921727, 186.597983771822),
+        'joy.png': (210.96698197394252, 183.62216669641265, 181.03551668748884)
+    }    
 
     im_orig = Image.open("9players.png")
     im = im_orig.convert("L")
     im = shift(im)
     im = flood_fill(im, 0, 0, 20, 255, 1, [])
-    im = erode(im, 5)
+    im = erode(im, 3)
     im_copy = im.copy()
     bbs = bounding_boxes(im_copy)
     for bb in bbs:
         win = check_section_win(im, bb[1], bb[0])
-        print("######")
-        print("Solved" if win else "Not solved")
         stats = get_pixel_stats(im_orig, get_pfp_pixels(im, bb[1], bb[0]))
-        print(stats)
-        print(f"probably {match_similar_pfp(players_pfp_stats, stats)}")
-        print("######")
+        print(f"{match_similar_pfp(players_pfp_stats, stats)[0][:-4]} " + ("SOLVED" if win else "NOT solved"))
