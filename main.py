@@ -313,7 +313,7 @@ def get_pfp_pixels(
     bbs = bounding_boxes(image, top_left, bot_right)
     max_round = (0, bbs[0])
     for bb in bbs:
-        r = roundness(image, bb[1], bb[0], 0)
+        r = roundness(image, bb[1], bb[0])
         if r > max_round[0]:
             max_round = (r, bb)
     pfp_pixels = []
