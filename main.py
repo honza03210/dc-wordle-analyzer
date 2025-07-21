@@ -7,6 +7,9 @@ neighbor4 = [(-1, 0), (1, 0), (0, 1), (0, -1)]
 IMAGE_MAX = 255
 MAX_PLAYERS = 15
 
+
+GIF_IMAGES = []
+
 """
 Shifts all pixels in the image by offset (new = old + offset)
 """
@@ -67,9 +70,11 @@ def flood_fill(
                 or curr_y + iy >= image.height
             ):
                 continue
+            p_val = image.getpixel((curr_x + ix, curr_y + iy))
             if (
-                image.getpixel((curr_x + ix, curr_y + iy)) < expected + tolerance
-                and image.getpixel((curr_x + ix, curr_y + iy)) > expected - tolerance
+                p_val < expected + tolerance
+                and p_val > expected - tolerance
+                and p_val != substitute
             ):
                 q.append((curr_x + ix, curr_y + iy))
                 background.append((curr_x + ix, curr_y + iy))
@@ -82,10 +87,18 @@ Erosion operation with circular convolution kernel of 'radius'
 """
 
 
-def erode(image: Image.Image, radius: int) -> Image.Image:
+def erode(
+    image: Image.Image,
+    radius: int,
+    top_left: tuple[int, int] | None = None,
+    bot_right: tuple[int, int] | None = None,
+) -> Image.Image:
     image_copy = image.copy()
-    for y in range(image.height):
-        for x in range(image.width):
+    if not top_left or not bot_right:
+        top_left = (0, 0)
+        bot_right = (image.width - 1, image.height - 1)
+    for y in range(top_left[1], bot_right[1]):
+        for x in range(top_left[0], bot_right[0]):
             for iy in range(-radius, radius + 1):
                 for ix in range(-radius, radius + 1):
                     if sqrt(iy * iy + ix * ix) >= radius:
@@ -106,10 +119,18 @@ Close operation with circular convolution kernel of 'radius'
 """
 
 
-def morf_close(image: Image.Image, radius: int) -> Image.Image:
+def morf_close(
+    image: Image.Image,
+    radius: int,
+    top_left: tuple[int, int] | None = None,
+    bot_right: tuple[int, int] | None = None,
+) -> Image.Image:
     image_copy = image.copy()
-    for y in range(image.height):
-        for x in range(image.width):
+    if not top_left or not bot_right:
+        top_left = (0, 0)
+        bot_right = (image.width - 1, image.height - 1)
+    for y in range(top_left[1], bot_right[1]):
+        for x in range(top_left[0], bot_right[0]):
             min_pix_val = IMAGE_MAX
             for iy in range(-radius, radius + 1):
                 for ix in range(-radius, radius + 1):
@@ -277,14 +298,12 @@ def get_pixel_stats(
     red = 0
     green = 0
     blue = 0
-    im_c = image.convert("L")
     im: Image.Image = image.convert("RGB")
     for pixel in pixels:
         r, g, b = im.getpixel(pixel)
         red += r
         green += g
         blue += b
-        im_c.putpixel((pixel[0], pixel[1]), 100)
     red /= len(pixels)
     green /= len(pixels)
     blue /= len(pixels)
@@ -303,13 +322,18 @@ def get_pfp_pixels(
     image: Image.Image, bot_right: tuple[int, int], top_left: tuple[int, int]
 ) -> list[tuple[int, int]]:
     image = image.copy()
+    GIF_IMAGES.append(image.copy())
     image = flood_fill(image, bot_right[0] - 20, bot_right[1] - 2, 30, IMAGE_MAX, 1, [])
-    image = erode(image, 3)
-    image = morf_close(image, 5)
+    GIF_IMAGES.append(image.copy())
+    image = erode(image, 3, top_left, bot_right)
+    GIF_IMAGES.append(image.copy())
+    image = morf_close(image, 5, top_left, bot_right)
+    GIF_IMAGES.append(image.copy())
     for y in range(image.height):
         for x in range(image.width):
             if image.getpixel((x, y)) != IMAGE_MAX:
                 image.putpixel((x, y), 100)
+    GIF_IMAGES.append(image.copy())
     bbs = bounding_boxes(image, top_left, bot_right)
     max_round = (0, bbs[0])
     for bb in bbs:
@@ -386,12 +410,16 @@ if __name__ == "__main__":
         "joy.png": (210.96698197394252, 183.62216669641265, 181.03551668748884),
     }
 
-    im_orig = Image.open("./tests/2true.png")
+    im_orig = Image.open("./tests/9players.png")
+    GIF_IMAGES.append(im_orig.copy())
     im = im_orig.convert("L")
+    GIF_IMAGES.append(im.copy())
     im = shift(im)  # makes space for IMAGE_MAX to be unique value as the background
     im = flood_fill(im, 0, 0, 20, IMAGE_MAX, 1, [])  # fills the background
+    GIF_IMAGES.append(im.copy())
     im = erode(im, 3)  # removes smaller artifacts (floating title text)
     im_copy = im.copy()
+    GIF_IMAGES.append(im.copy())
     bbs = bounding_boxes(
         im_copy
     )  # these are the bounding boxes of segments with pfp and playthrough
@@ -406,3 +434,12 @@ if __name__ == "__main__":
             f"{match_similar_pfp(players_pfp_stats, stats)[0][:-4]} "
             + ("SOLVED" if win else "NOT solved")
         )
+
+    GIF_IMAGES[0].save(
+        "wow.gif",
+        save_all=True,
+        append_images=GIF_IMAGES[1:],
+        optimize=False,
+        duration=1000,
+        loop=0,
+    )
